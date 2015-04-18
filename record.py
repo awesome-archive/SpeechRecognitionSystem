@@ -5,6 +5,7 @@ import numpy
 import pyaudio
 import wave
 import struct
+import SR
 
 
 class Recorder(object):
@@ -13,27 +14,32 @@ class Recorder(object):
     Records in mono by default.
     """
 
-    def __init__(self, channels=1, rate=44100, frames_per_buffer=1024, endpointed=False):
+    def __init__(self, channels=1, rate=44100, frames_per_buffer=1024, endpointed=False, using_kmeans=0):
         self.channels = channels
         self.rate = rate
         self.frames_per_buffer = frames_per_buffer
         self.endpointed = endpointed
+        self.using_kmeans = using_kmeans
 
-    def open(self, fname, mode='wb'):
-        return RecordingFile(fname, mode, self.channels, self.rate,
-                             self.frames_per_buffer, self.endpointed)
+    def open(self, filename, mode='wb', time_synchronous=0):
+        return RecordingFile(filename, mode, self.channels, self.rate,
+                             self.frames_per_buffer, self.endpointed, time_synchronous, self.using_kmeans)
 
 
 class RecordingFile(object):
-    def __init__(self, fname, mode, channels,
-                 rate, frames_per_buffer, endpointed):
-        self.fname = fname
+    """
+    Recording when there is sounds if time_synchronous = 0,else recording all the time
+    """
+
+    def __init__(self, filename, mode, channels,
+                 rate, frames_per_buffer, endpointed, time_synchronous, using_kmeans):
+        self.filename = filename
         self.mode = mode
         self.channels = channels
         self.rate = rate
         self.frames_per_buffer = frames_per_buffer
         self._pa = pyaudio.PyAudio()
-        self.wavefile = self._prepare_file(self.fname, self.mode)
+        self.wavefile = self._prepare_file(self.filename, self.mode)
         self._stream = None
         self.endpointed = endpointed
         self.forget_factor = 1.0
@@ -44,9 +50,13 @@ class RecordingFile(object):
         self.is_speech = False
         self.past_is_speech = False
         self.max_energy = 0.0
-        self.false_times = 0
-        self.index = -5  # 滤掉前五帧
-        self.condition = -1  # -1表示还没开始说话,0表示正在说话,1表示说完
+        self.index = 0.0  # 滤掉前五帧
+        self.begin_index = 0
+        self.end_index = 0
+        self.time_synchronous = time_synchronous
+        self.using_kmeans = using_kmeans
+        self.DTW_obj = 0
+        self.need_train = 1
 
     def __enter__(self):
         return self
@@ -90,15 +100,8 @@ class RecordingFile(object):
                     current.append(struct.unpack('h', in_data[2 * i:2 * i + 2])[0])
                     # print current
                 self.endpointing(current)
-                if self.is_speech:
-                    if self.condition == -1:
-                        self.condition = 0
+                if self.is_speech or self.time_synchronous:
                     self.wavefile.writeframes(in_data)
-                else:
-                    if self.condition == 0:
-                        self.condition = 1
-            if self.condition == 1:
-                state = pyaudio.paComplete
             return in_data, state
 
         return callback
@@ -109,33 +112,33 @@ class RecordingFile(object):
         self._pa.terminate()
         self.wavefile.close()
 
-    def _prepare_file(self, fname, mode='wb'):
-        wavefile = wave.open(fname, mode)
+    def _prepare_file(self, filename, mode='wb'):
+        wavefile = wave.open(filename, mode)
         wavefile.setnchannels(self.channels)
         wavefile.setsampwidth(self._pa.get_sample_size(pyaudio.paInt16))
         wavefile.setframerate(self.rate)
         return wavefile
 
     def endpointing(self, current):
-        if self.false_times > 40:
-            self.is_speech = False
         energy = 0.0
         # print current
         # print len(current)
+        self.is_speech = False
         for i in range(len(current)):
             energy += pow(current[i], 2)
         energy = 10 * numpy.log(energy)
-        print self.threshold, self.level, self.background
+        # print self.threshold, self.level, self.background
         # print energy
         if self.index == 0:
             self.level = energy
+        # threshold equals to max energy of first ten frames divide 4
         if self.index < 10 and self.index >= 0:
             if self.max_energy < energy:
                 self.max_energy = energy
             self.background += energy
             if self.index == 9:
                 self.background /= 10
-                self.threshold = self.max_energy / 2
+                self.threshold = self.max_energy / 4
         if self.index >= 10:
             if energy < self.background:
                 self.background = energy
@@ -146,15 +149,20 @@ class RecordingFile(object):
                 self.level = self.background
             if self.level - self.background > self.threshold:
                 self.is_speech = True
-                self.false_times = 0
-            else:
-                self.false_times += 1
             if self.is_speech != self.past_is_speech:
                 if self.is_speech:
-                    print "speech begin at %d\n" % self.index
-                    print 'energy = %d\n' % energy
+                    self.begin_index = self.index
+                    # print "speech begin at %d\n" % self.begin_index
+                    # print 'energy = %d\n' % energy
                 else:
-                    print "speech end at %d\n" % self.index
-                    print 'energy = %d\n' % energy
+                    self.end_index = self.index
+                    if self.time_synchronous and self.end_index - self.begin_index > 10:
+                        if self.need_train:
+                            self.need_train = 0
+                            self.DTW_obj = SR.training_model(5, self.using_kmeans)[0]
+                        SR.test(self.time_synchronous, 1, 5, self.using_kmeans, self.begin_index,
+                                self.end_index, self.DTW_obj)
+                        # print "speech end at %d\n" % self.end_index
+                        # print 'energy = %d\n' % energy
             self.past_is_speech = self.is_speech
         self.index += 1

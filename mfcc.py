@@ -55,7 +55,7 @@ def fbank(signal, samplerate=16000, winlen=0.025, winstep=0.01,
     # print type(signal[0])
     frames = sigproc.framesig(signal, winlen * samplerate, winstep * samplerate, winfunc=hamming_window)
     powspec = sigproc.powspec(frames, nfft)
-    numpy.savetxt("result.txt", powspec, delimiter=",")
+    # numpy.savetxt("result.txt", powspec, delimiter=",")
     energy = numpy.sum(powspec, 1)  # this stores the total energy in each frame
     energy = numpy.where(energy == 0, numpy.finfo(float).eps,
                          energy)  # if energy is zero, we get problems with log, use numpy.finfo(float).eps to replace 0
@@ -153,3 +153,49 @@ def hamming_window(x):
         window.append(0.54 - 0.46 * math.cos(2.0 * math.pi * i / x))
     # print 'window\n', window
     return numpy.array(window)
+
+
+def normalization(origin_feature):
+    """
+    get the 39-dimensions feature after finite difference and normalization
+    :param array,origin_feature:origin mfcc feature
+    :return:39-dimensions feature
+    """
+    number_of_frames = origin_feature.shape[0]
+    mean = numpy.zeros(13)
+    for i in range(0, number_of_frames):
+        numpy.add(mean, origin_feature[i], mean)
+    numpy.divide(mean, number_of_frames, mean)
+    for i in xrange(0, number_of_frames):
+        numpy.subtract(origin_feature[i], mean, origin_feature[i])
+    normalization_feature = []
+    temp_normalization_feature = []
+    for i in xrange(number_of_frames):
+        if i == 0:
+            temp = numpy.append(origin_feature[i], origin_feature[i + 1])
+        elif i == origin_feature.shape[0] - 1:
+            temp = numpy.append(origin_feature[i], -origin_feature[i - 1])
+        else:
+            temp = numpy.append(origin_feature[i], numpy.subtract \
+                (origin_feature[i + 1], origin_feature[i - 1]))
+        temp_normalization_feature.append(temp)
+    for i in xrange(number_of_frames):
+        if i == 0:
+            temp = numpy.append(temp_normalization_feature[i], temp_normalization_feature[i + 1][13:26])
+        elif i == len(temp_normalization_feature) - 1:
+            temp = numpy.append(temp_normalization_feature[i], -temp_normalization_feature[i - 1][13:26])
+        else:
+            temp = numpy.append(temp_normalization_feature[i], numpy.subtract \
+                (temp_normalization_feature[i + 1][13:26], temp_normalization_feature[i - 1][13:26]))
+        normalization_feature.append(temp)
+    normalization_feature = numpy.array(normalization_feature)
+    # print normalization_feature[0]
+    mean = numpy.zeros(39)
+    for i in range(0, number_of_frames):
+        numpy.add(mean, normalization_feature[i], mean)
+    numpy.divide(mean, number_of_frames, mean)
+    # print mean
+    for i in range(0, number_of_frames):
+        numpy.subtract(normalization_feature[i], mean, normalization_feature[i])
+    # print normalization_feature[0]
+    return normalization_feature
