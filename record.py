@@ -14,16 +14,20 @@ class Recorder(object):
     Records in mono by default.
     """
 
-    def __init__(self, channels=1, rate=44100, frames_per_buffer=1024, endpointed=False, using_kmeans=0):
+    def __init__(self, channels=1, rate=44100, frames_per_buffer=1024, endpointed=False, using_kmeans=0,
+                 read_feature_from_file=0, DTW_obj=[]):
         self.channels = channels
         self.rate = rate
         self.frames_per_buffer = frames_per_buffer
         self.endpointed = endpointed
         self.using_kmeans = using_kmeans
+        self.read_feature_from_file = read_feature_from_file
+        self.DTW_obj = DTW_obj
 
     def open(self, filename, mode='wb', time_synchronous=0):
         return RecordingFile(filename, mode, self.channels, self.rate,
-                             self.frames_per_buffer, self.endpointed, time_synchronous, self.using_kmeans)
+                             self.frames_per_buffer, self.endpointed, time_synchronous, self.using_kmeans,
+                             self.read_feature_from_file, DTW_obj=self.DTW_obj)
 
 
 class RecordingFile(object):
@@ -32,7 +36,8 @@ class RecordingFile(object):
     """
 
     def __init__(self, filename, mode, channels,
-                 rate, frames_per_buffer, endpointed, time_synchronous, using_kmeans):
+                 rate, frames_per_buffer, endpointed, time_synchronous, using_kmeans, read_feature_from_file=0,
+                 DTW_obj=[]):
         self.filename = filename
         self.mode = mode
         self.channels = channels
@@ -55,8 +60,9 @@ class RecordingFile(object):
         self.end_index = 0
         self.time_synchronous = time_synchronous
         self.using_kmeans = using_kmeans
-        self.DTW_obj = 0
+        self.DTW_obj = DTW_obj
         self.need_train = 1
+        self.read_feature_from_file = read_feature_from_file
 
     def __enter__(self):
         return self
@@ -156,12 +162,12 @@ class RecordingFile(object):
                     # print 'energy = %d\n' % energy
                 else:
                     self.end_index = self.index
-                    if self.time_synchronous and self.end_index - self.begin_index > 10:
-                        if self.need_train:
-                            self.need_train = 0
-                            self.DTW_obj = SR.training_model(5, self.using_kmeans)[0]
+                    if self.time_synchronous and self.end_index - self.begin_index > 8:
+                        # if self.need_train:
+                        #    self.need_train = 0
+                        #    self.DTW_obj = SR.training_model(5, self.using_kmeans)[0]
                         SR.test(self.time_synchronous, 1, 5, self.using_kmeans, self.begin_index,
-                                self.end_index, self.DTW_obj)
+                                self.end_index, self.DTW_obj, self.read_feature_from_file)
                         # print "speech end at %d\n" % self.end_index
                         # print 'energy = %d\n' % energy
             self.past_is_speech = self.is_speech

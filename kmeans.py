@@ -43,7 +43,7 @@ def get_mahalanobis_distance(covariance_matrix, mean, segment):
     difference_between_segment_and_mean = numpy.subtract(segment, mean)
     mahalanobis_distance = numpy.dot(numpy.dot(difference_between_segment_and_mean.transpose(), inv_covariance_matrix), \
         difference_between_segment_and_mean)
-    #print 'mahalanobis_distance', mahalanobis_distance
+    # print 'mahalanobis_distance', mahalanobis_distance
     node_cost = 0
     for i in xrange(len(covariance_matrix)):
         node_cost += math.log(2 * math.pi * covariance_matrix[i][i])
@@ -178,7 +178,7 @@ def k_means(templates, number_of_states=5):
     :return: list,the template after doing k-means
     """
     # we assume that frames in each state is continuous
-    print 'kmeans'
+    # print 'kmeans'
     number_of_templates = len(templates)
     # print 'number_of_templates', number_of_templates
     # number_of_frames_in_state_for_each_template[i][j] represent for the number of frames in ith template jth state
@@ -194,18 +194,18 @@ def k_means(templates, number_of_states=5):
         # print 'covariance_matrix', covariance_matrix
         # print '\nedge cost', edge_cost
         # print 'mean', mean
-        #print 'state_for_each_template', state_for_each_template
-        #print 'number_of_frames_in_each_state_for_each_template', number_of_frames_in_each_state_for_each_template
+        # print 'state_for_each_template', state_for_each_template
+        # print 'number_of_frames_in_each_state_for_each_template', number_of_frames_in_each_state_for_each_template
         iteration_times += 1
         #print 'iteration_times', iteration_times
         cluster_changed = False
-        viterbi_search_object = DTW.DTW([mean[:]])
+        viterbi_search_object = DTW.DTW([mean])
         for i in xrange(len(templates)):
             # print 'templates', templates
             number_of_frames = len(templates[i])
             cost, template, path = viterbi_search_object.DTW(templates[i][:], strategy=0, cost_function=1,
-                                                             covariance_matrix=covariance_matrix[:],
-                                                             edge_cost=edge_cost[:])
+                                                             covariance_matrix=covariance_matrix,
+                                                             edge_cost=edge_cost)
             #print 'path', path
             #print 'cost', cost
             temp_state_for_one_template = [0 for j in xrange(number_of_frames)]

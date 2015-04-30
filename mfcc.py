@@ -29,6 +29,7 @@ def mfcc(signal, samplerate=16000, winlen=0.025, winstep=0.01, numcep=13,
     feat, energy = fbank(signal, samplerate, winlen, winstep, nfilt, nfft, lowfreq, highfreq, preemph)
     feat = numpy.log(feat)
     feat = dct(feat, type=2, axis=1, norm='ortho')[:, :numcep]
+    feat = lifter(feat, ceplifter)
     if appendEnergy: feat[:, 0] = numpy.log(energy)  # replace first cepstral coefficient with log of frame energy
     return feat
 
@@ -189,7 +190,8 @@ def normalization(origin_feature):
                 (temp_normalization_feature[i + 1][13:26], temp_normalization_feature[i - 1][13:26]))
         normalization_feature.append(temp)
     normalization_feature = numpy.array(normalization_feature)
-    # print normalization_feature[0]
+    return normalization_feature
+    """
     mean = numpy.zeros(39)
     for i in range(0, number_of_frames):
         numpy.add(mean, normalization_feature[i], mean)
@@ -199,3 +201,21 @@ def normalization(origin_feature):
         numpy.subtract(normalization_feature[i], mean, normalization_feature[i])
     # print normalization_feature[0]
     return normalization_feature
+    """
+
+def lifter(cepstra, L=22):
+    """
+    Apply a cepstral lifter the the matrix of cepstra. This has the effect of increasing the
+    magnitude of the high frequency DCT coeffs.
+
+    :param cepstra: the matrix of mel-cepstra, will be numframes * numcep in size.
+    :param L: the liftering coefficient to use. Default is 22. L <= 0 disables lifter.
+    """
+    if L > 0:
+        nframes, ncoeff = numpy.shape(cepstra)
+        n = numpy.arange(ncoeff)
+        lift = 1 + (L / 2) * numpy.sin(numpy.pi * n / L)
+        return lift * cepstra
+    else:
+        # values of L <= 0, do nothing
+        return cepstra

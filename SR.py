@@ -14,6 +14,8 @@ import re
 import kmeans
 from scipy import io
 import profile
+import segment
+import generate_lexical_tree
 import scipy.io.wavfile as wav
 
 
@@ -63,19 +65,20 @@ def get_mfcc_feat_from_file(filename):
     return numpy.array(normalization_feature)
 
 
-def endpointed_record(time_synchronous=0, using_kmeans=0):
+def endpointed_record(time_synchronous=0, using_kmeans=0, read_feature_from_file=0, DTW_obj=[]):
     """
     record a voice and save it in recording.scipy.io.wavfile,start to record when you input a number and stop when you stop saying
     :param time_synchronous: 0: just record
                              1: record and do DTW
     :param using_kmeans: 1 if using k-means to templates to generate some states
+    :param DTW_obj:a DTW object,the trained model
     """
     rec = record.Recorder(channels=1, rate=44100, endpointed=True, frames_per_buffer=int(44100 * 0.02),
-                          using_kmeans=using_kmeans)
+                          using_kmeans=using_kmeans, read_feature_from_file=read_feature_from_file, DTW_obj=DTW_obj)
     with rec.open('recording.wav', 'wb', time_synchronous=time_synchronous) as recfile2:
         input('please input a number to start to record\n')
         recfile2.start_recording()
-        time.sleep(200.0)
+        time.sleep(20000.0)
         recfile2.stop_recording()
 
 
@@ -86,17 +89,20 @@ def compare_two_articles(filename1, filename2):
     :param filename2: article2's filename
     :return: levenshtein distance between two articles
     """
-    templates = [re.split('\W', spell_checker.read_file(filename1))]
-    input_string = re.split('\W', spell_checker.read_file(filename2))
+    templates = [re.split('\W+', spell_checker.read_file(filename1).strip())]
+    input_string = re.split('\W+', spell_checker.read_file(filename2).strip())
+    print templates
+    print input_string
     levenshtein_distance_obj = levenshtein_distance.LevenshteinDistance(templates=templates, string_or_list=1)
     print levenshtein_distance_obj.levenshtein_distance(input_string=input_string, strategy=1, string_or_list=1)
 
 
-def get_templates_and_inputs(digit, number_of_templates):
+def get_templates_and_inputs(digit, number_of_templates, read_feature_from_file=0):
     """
     split 10 records of a digit to templates and inputs random
     :param digit: the digit you want to split,0-9
     :param number_of_templates: templates' numbers
+    :param read_feature_from_file:1 then read mfcc feature from file,0 then compute mfcc feature from records
     :return: a template list and a input list
     """
     templates_index_list = random.sample(xrange(0, 10), number_of_templates)
@@ -104,36 +110,38 @@ def get_templates_and_inputs(digit, number_of_templates):
     templates_list = []
     for i in xrange(0, 10):
         if i in templates_index_list:
-            # templates_list.append(map(list, get_mfcc_feat_from_file('./feature/' + str(digit) + '_' + str(i) + '.txt')))
-
-            templates_list.append(
-                map(list,
-                    get_mfcc_feat(filename="./records/" + str(digit) + '_' + str(i) + '.wav', winstep=0.01,
-                                  nfilt=40,
-                                  numcep=13, preemph=0.95, appendEnergy=False)[2]))
+            if read_feature_from_file:
+                templates_list.append(
+                    map(list, get_mfcc_feat_from_file('./feature/' + str(digit) + '_' + str(i) + '.txt')))
+            else:
+                templates_list.append( \
+                    map(list, get_mfcc_feat(filename="./records/" + str(digit) + '_' + str(i) + '.wav', winstep=0.01, \
+                                            nfilt=40, numcep=13, preemph=0.95, appendEnergy=True)[2]))
 
         else:
-            # inputs_list.append(map(list, get_mfcc_feat_from_file('./feature/' + str(digit) + '_' + str(i) + '.txt')))
-            inputs_list.append(
-                map(list,
-                    get_mfcc_feat(filename="./records/" + str(digit) + '_' + str(i) + '.wav', winstep=0.01,
-                                  nfilt=40,
-                                  numcep=13, preemph=0.95, appendEnergy=False)[2]))
+            if read_feature_from_file:
+                inputs_list.append(
+                    map(list, get_mfcc_feat_from_file('./feature/' + str(digit) + '_' + str(i) + '.txt')))
+            else:
+                inputs_list.append( \
+                    map(list, get_mfcc_feat(filename="./records/" + str(digit) + '_' + str(i) + '.wav', winstep=0.01, \
+                                            nfilt=40, numcep=13, preemph=0.95, appendEnergy=True)[2]))
     return templates_list, inputs_list
 
 
-def training_model(number_of_templates, using_kmeans):
+def training_model(number_of_templates, using_kmeans, read_feature_from_file=0):
     """
     training the model using DTW to recognize the records
     :param number_of_templates: int, using number_of_templates to train the model
     :param using_kmeans: 1 if using k-means to templates to generate some states
+    :param read_feature_from_file:1 then read mfcc feature from file,0 then compute mfcc feature from records
     :return: DTW_obj:a DTW object,the trained model
     :return: inputs:list,every element of it is a template using for test
     """
     templates = []
     inputs = []
     for digit in xrange(0, 10):
-        temp = get_templates_and_inputs(digit, number_of_templates)
+        temp = get_templates_and_inputs(digit, number_of_templates, read_feature_from_file)
         # print 'temp',temp[0]
         # print 'k_means(temp[0], number_of_states=5)',kmeans.k_means(temp[0], number_of_states=5)
         templates.extend(
@@ -184,7 +192,8 @@ def test(time_synchronous, pruning, number_of_templates, using_kmeans, begin_ind
             print 'when using ' + str(number_of_templates) + ' predict you spoke', predict_digit
 
 
-def test_DTW(time_synchronous=0, begin_index=0, end_index=0, pruning=0, using_kmeans=0):
+def test_DTW(time_synchronous=0, begin_index=0, end_index=0, pruning=0, using_kmeans=0, read_feature_from_file=0,
+             DTW_obj=[], inputs=[]):
     """
     test all records in inputs list using different number of templates(1-5)
     :param time_synchronous: 0: using recorded data as input
@@ -193,10 +202,12 @@ def test_DTW(time_synchronous=0, begin_index=0, end_index=0, pruning=0, using_km
     :param end_index: the frame when record end
     :param pruning: pruning if equals to 1
     :param using_kmeans: 1 if using k-means to templates to generate some states
+    :param read_feature_from_file:1 then read mfcc feature from file,0 then compute mfcc feature from records
     """
     for number_of_templates in xrange(1, 6):
         if number_of_templates == 5 or (not using_kmeans):
-            DTW_obj, inputs = training_model(number_of_templates, using_kmeans)
+            if DTW_obj == [] or inputs == []:
+                DTW_obj, inputs = training_model(number_of_templates, using_kmeans, read_feature_from_file)
             test(time_synchronous, pruning, number_of_templates, using_kmeans, begin_index, end_index, DTW_obj, inputs)
 
 
@@ -213,17 +224,33 @@ def main():
     # normalization_feature_1 = map(list, normalization_feature_1)
     # DTW_obj = DTW.DTW([normalization_feature_0])
     # distance, template_index, path = DTW_obj.DTW(normalization_feature_1, 0)
-    print '\nthis is the result using DTW without pruning\n'
-    # test_DTW(pruning=0, using_kmeans=0)
-    print '\nthis is the result using DTW with pruning\n'
-    #test_DTW(pruning=1, using_kmeans=0)
-    print '\nthis is the result using HMM model with pruning\n'
-    test_DTW(pruning=1, using_kmeans=1)
-    input('input a number to begin\n')
-    endpointed_record(time_synchronous=1, using_kmeans=1)
+    # print '\nthis is the result using DTW without pruning\n'
+    # test_DTW(pruning=0, using_kmeans=0, read_feature_from_file=0,DTW_obj=DTW_obj)
+    # print '\nthis is the result using DTW with pruning\n'
+    # test_DTW(pruning=1, using_kmeans=0, read_feature_from_file=0,DTW_obj=DTW_obj)
+    # DTW_obj, inputs = training_model(number_of_templates=5, using_kmeans=1, read_feature_from_file=0)
+    # print '\nthis is the result using HMM model with pruning\n'
+    # test_DTW(pruning=1, using_kmeans=1, read_feature_from_file=0, DTW_obj=DTW_obj, inputs=inputs)
+    # input('input a number to begin\n')
+    # endpointed_record(time_synchronous=1, using_kmeans=1, read_feature_from_file=0, DTW_obj=DTW_obj)
     # templates = [[[1], [2], [100], [100], [5], [6], [7], [8], [9], [10]], \
     # [[100], [100], [55], [88], [12], [99], [2], [3], [33], [10]]]
     # kmeans.k_means(templates)
+    # lexical_tree = generate_lexical_tree.generate_lexical_tree(
+    #    generate_lexical_tree.get_word_list_from_file('dict_1.txt'))
+    # lexical_tree = generate_lexical_tree.generate_lexical_tree(['booking', 'booming'])
+    #transform_list_out = generate_lexical_tree.generate_transform_list_out(lexical_tree, ' ')
+    #transform_list_in = generate_lexical_tree.generate_transform_list_in(transform_list_out)
+    #templates = [''.join([i.keys()[0] for i in transform_list_out])[1:]]
+    # levenshtein_distance_obj = levenshtein_distance.LevenshteinDistance(templates, string_or_list=0)
+    #spell_checker.spell_checker_io_using_file('typos.txt', 'checked.txt', lexical_tree=1,
+    #                                           transform_list_in=transform_list_in,
+    #                                          transform_list_out=transform_list_out, templates=templates)
+    # print levenshtein_distance_obj.levenshtein_distance('aaaziefoose', strategy=1, string_or_list=0, lexical_tree=1,
+    #                                                    transform_list_in=transform_list_in,
+    #                                                    transform_list_out=transform_list_out)
+    compare_two_articles('segmented.txt', 'segmented1.txt')
+    #segment.segment('unsegmented0.txt', 'dict_1.txt')
 
 
 if __name__ == '__main__':
