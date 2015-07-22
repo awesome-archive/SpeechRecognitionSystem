@@ -41,12 +41,14 @@ class DTW(object):
         self.old_extensible_index = [1 for i in xrange(0, self.distance_matrix_rows)]
 
 
-    def DTW(self, input_feature, strategy, accuracy=1.0, cost_function=0, covariance_matrix=[], edge_cost=[]):
+    def DTW(self, input_feature, strategy, number_of_templates, accuracy=1.0, cost_function=0, covariance_matrix=[],
+            edge_cost=[]):
         """
         a routine to compute the DTW between mfcc features
         :param input_feature: list,the input mfcc feature
         :param strategy: 0:don't pruning
                          1:use relative pruning
+        :param number_of_templates: number_of_templates, to get the right digit
         :param accuracy: self.threshold = 2 * min(new_distance) / max(0.00001, accuracy)
         :param cost_function: 0:use euclidean_distance as the distance
                               1:use DTW as Viterbi Search,which has a edge cost and a node cost
@@ -101,7 +103,7 @@ class DTW(object):
             path.append(last_position)
             i = last_position[0]
             j = last_position[1]
-        return min_distance, total_distance.index(min_distance), path
+        return min_distance, total_distance.index(min_distance) / number_of_templates, path
 
 
     def get_distance_using_euclidean_distance_as_node_cost(self, new_distance, last_block_position, row, column,
@@ -146,7 +148,7 @@ class DTW(object):
             node_cost = 0
         else:
             node_cost = kmeans.get_mahalanobis_distance(covariance_matrix[j - 1], mean[j], frames[i])[1]
-        #print 'node_cost', i, j, node_cost
+        # print 'node_cost', i, j, node_cost
         if self.templates_added_length_list[j]:
             cost_from_left_node = node_cost + edge_cost[j][j]
             new_distance[j] = distance[j] + cost_from_left_node

@@ -15,7 +15,7 @@ class Recorder(object):
     """
 
     def __init__(self, channels=1, rate=44100, frames_per_buffer=1024, endpointed=False, using_kmeans=0,
-                 read_feature_from_file=0, DTW_obj=[]):
+                 read_feature_from_file=0, DTW_obj=[], record_continuous=0):
         self.channels = channels
         self.rate = rate
         self.frames_per_buffer = frames_per_buffer
@@ -23,11 +23,13 @@ class Recorder(object):
         self.using_kmeans = using_kmeans
         self.read_feature_from_file = read_feature_from_file
         self.DTW_obj = DTW_obj
+        self.record_continuous = record_continuous
 
     def open(self, filename, mode='wb', time_synchronous=0):
         return RecordingFile(filename, mode, self.channels, self.rate,
                              self.frames_per_buffer, self.endpointed, time_synchronous, self.using_kmeans,
-                             self.read_feature_from_file, DTW_obj=self.DTW_obj)
+                             self.read_feature_from_file, DTW_obj=self.DTW_obj,
+                             record_continuous=self.record_continuous)
 
 
 class RecordingFile(object):
@@ -37,7 +39,7 @@ class RecordingFile(object):
 
     def __init__(self, filename, mode, channels,
                  rate, frames_per_buffer, endpointed, time_synchronous, using_kmeans, read_feature_from_file=0,
-                 DTW_obj=[]):
+                 DTW_obj=[], record_continuous=0):
         self.filename = filename
         self.mode = mode
         self.channels = channels
@@ -63,6 +65,7 @@ class RecordingFile(object):
         self.DTW_obj = DTW_obj
         self.need_train = 1
         self.read_feature_from_file = read_feature_from_file
+        self.record_continuous = record_continuous
 
     def __enter__(self):
         return self
@@ -106,12 +109,11 @@ class RecordingFile(object):
                     current.append(struct.unpack('h', in_data[2 * i:2 * i + 2])[0])
                     # print current
                 self.endpointing(current)
-                if self.is_speech or self.time_synchronous:
+                if self.is_speech or self.time_synchronous or self.record_continuous:
                     self.wavefile.writeframes(in_data)
             return in_data, state
 
         return callback
-
 
     def close(self):
         self._stream.close()
@@ -144,7 +146,7 @@ class RecordingFile(object):
             self.background += energy
             if self.index == 9:
                 self.background /= 10
-                self.threshold = self.max_energy / 4
+                self.threshold = self.max_energy / 8
         if self.index >= 10:
             if energy < self.background:
                 self.background = energy
@@ -162,7 +164,7 @@ class RecordingFile(object):
                     # print 'energy = %d\n' % energy
                 else:
                     self.end_index = self.index
-                    if self.time_synchronous and self.end_index - self.begin_index > 8:
+                    if not self.record_continuous and self.time_synchronous and self.end_index - self.begin_index > 8:
                         # if self.need_train:
                         #    self.need_train = 0
                         #    self.DTW_obj = SR.training_model(5, self.using_kmeans)[0]

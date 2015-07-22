@@ -4,6 +4,7 @@ __author__ = 'lufo'
 import numpy
 import math
 import DTW
+import SR
 
 
 def get_covariance(data_array):
@@ -42,7 +43,7 @@ def get_mahalanobis_distance(covariance_matrix, mean, segment):
     # print 'inv_covariance_matrix', inv_covariance_matrix
     difference_between_segment_and_mean = numpy.subtract(segment, mean)
     mahalanobis_distance = numpy.dot(numpy.dot(difference_between_segment_and_mean.transpose(), inv_covariance_matrix), \
-        difference_between_segment_and_mean)
+                                     difference_between_segment_and_mean)
     # print 'mahalanobis_distance', mahalanobis_distance
     node_cost = 0
     for i in xrange(len(covariance_matrix)):
@@ -184,6 +185,13 @@ def k_means(templates, number_of_states=5):
     # number_of_frames_in_state_for_each_template[i][j] represent for the number of frames in ith template jth state
     number_of_frames_in_each_state_for_each_template = initialize_states \
         (templates, number_of_templates, number_of_states)
+    trained_model = train_model(templates, number_of_states, number_of_frames_in_each_state_for_each_template)
+    # print 'covariance_matrix', covariance_matrix
+    return trained_model
+
+
+def train_model(templates, number_of_states, number_of_frames_in_each_state_for_each_template):
+    number_of_templates = len(templates)
     edge_cost, state_for_each_template = get_edge_cost(number_of_frames_in_each_state_for_each_template,
                                                        number_of_templates, number_of_states)
     covariance_matrix, mean = get_covariance_and_mean_for_each_state(templates, state_for_each_template,
@@ -197,7 +205,7 @@ def k_means(templates, number_of_states=5):
         # print 'state_for_each_template', state_for_each_template
         # print 'number_of_frames_in_each_state_for_each_template', number_of_frames_in_each_state_for_each_template
         iteration_times += 1
-        #print 'iteration_times', iteration_times
+        # print 'iteration_times', iteration_times
         cluster_changed = False
         viterbi_search_object = DTW.DTW([mean])
         for i in xrange(len(templates)):
@@ -205,9 +213,10 @@ def k_means(templates, number_of_states=5):
             number_of_frames = len(templates[i])
             cost, template, path = viterbi_search_object.DTW(templates[i][:], strategy=0, cost_function=1,
                                                              covariance_matrix=covariance_matrix,
-                                                             edge_cost=edge_cost)
-            #print 'path', path
-            #print 'cost', cost
+                                                             edge_cost=edge_cost,
+                                                             number_of_templates=number_of_templates)
+            # print 'path', path
+            # print 'cost', cost
             temp_state_for_one_template = [0 for j in xrange(number_of_frames)]
             for j in xrange(number_of_frames - 1):
                 temp_state_for_one_template[j] = path[number_of_frames - 2 - j][1] - 1
@@ -217,13 +226,78 @@ def k_means(templates, number_of_states=5):
                 state_for_each_template[i] = temp_state_for_one_template[:]
         number_of_frames_in_each_state_for_each_template = get_number_of_frames_in_each_state_for_each_template_by_state_for_each_template(
             state_for_each_template, number_of_states)
-        #print 'state_for_each_template', state_for_each_template
-        #print 'number_of_frames_in_each_state_for_each_template',number_of_frames_in_each_state_for_each_template
+        # print 'state_for_each_template', state_for_each_template
+        # print 'number_of_frames_in_each_state_for_each_template',number_of_frames_in_each_state_for_each_template
         edge_cost = get_edge_cost(number_of_frames_in_each_state_for_each_template,
                                   number_of_templates, number_of_states)[0]
-        #print 'edge cost', edge_cost
         covariance_matrix, mean = get_covariance_and_mean_for_each_state(templates, state_for_each_template,
                                                                          number_of_states)
-        #print 'covariance_matrix', covariance_matrix
-        #print 'mean', mean
-    return [map(list, mean)]
+        # print number_of_frames_in_each_state_for_each_template
+        # print 'covariance_matrix',len(covariance_matrix)
+        # print 'mean',len(mean)
+    return [map(list,
+                mean)], edge_cost, covariance_matrix, mean, state_for_each_template, number_of_frames_in_each_state_for_each_template
+
+
+def train_continuous_model(input_list, continuous_words, number_of_states_for_each_word=5):
+    number_of_frames_in_each_state_for_each_template = []
+    number_of_words = len(continuous_words) + 2  # 2为首尾的silence
+    number_of_states = number_of_states_for_each_word * (number_of_words)
+    number_of_frames_in_each_state = []  # 第i个元素代表state i的frame数
+    template = []
+    covariance_matrix_in_each_state = []
+    mean_in_each_state = []
+    for i in xrange(number_of_words):
+        if i == 0 or i == number_of_words - 1:
+            word = 10  # silence
+        else:
+            word = int(continuous_words[i - 1])
+        mfcc_list = SR.get_isolated_templates(word)
+        model = k_means(mfcc_list)
+        temp_number_of_frames_in_each_state = [0 for i in xrange(number_of_states_for_each_word)]
+        for number_of_frames_in_each_state_in_each_template in model[5]:
+            for i in xrange(number_of_states_for_each_word):
+                temp_number_of_frames_in_each_state[i] += number_of_frames_in_each_state_in_each_template[i]
+        number_of_frames_in_each_state.extend(temp_number_of_frames_in_each_state)
+        template.extend(model[0][0])
+        covariance_matrix_in_each_state.extend(model[2])
+        mean_in_each_state.extend(model[3])
+    for input_feature in input_list:
+        print len(template), len(input_feature)
+        last_state_index = [[[0, 0] for i in xrange(len(template))] for j in xrange(len(input_feature))]
+        cost_matrix = [[float('inf') for i in xrange(len(template))] for j in xrange(len(input_feature))]
+        cost_matrix[0][0] = get_mahalanobis_distance(covariance_matrix_in_each_state[0],
+                                                     mean_in_each_state[0], input_feature[0])[1]
+        for i in xrange(1, len(input_feature)):
+            for j in xrange(len(template)):
+                if j == 0:
+                    transform_list = [j]
+                else:
+                    transform_list = [j - 1, j]
+                for last_state in transform_list:
+                    edge_cost = (number_of_frames_in_each_state[j] - 10.0) / number_of_frames_in_each_state[
+                        j] if j == last_state else 10.0 / number_of_frames_in_each_state[last_state]
+                    new_cost = cost_matrix[i - 1][last_state] + edge_cost
+                    if cost_matrix[i][j] > new_cost:
+                        min_index = last_state
+                        cost_matrix[i][j] = new_cost
+                cost_matrix[i][j] += get_mahalanobis_distance(covariance_matrix_in_each_state[j],
+                                                              mean_in_each_state[j], input_feature[i])[1]
+                last_state_index[i][j] = [i - 1, min_index]
+        min_cost = min(
+            cost_matrix[len(input_feature) - 1][(len(template) - number_of_states_for_each_word):len(template)])
+        cur_index = cost_matrix[len(input_feature) - 1].index(min_cost)
+        path = []
+        i = len(input_feature) - 1
+        while i >= 0:
+            path.append(cur_index)
+            cur_index = last_state_index[i][cur_index][1]
+            i -= 1
+        print path
+        number_of_frames_in_each_state_in_one_template = [0 for i in xrange(number_of_states)]
+        for state in path:
+            number_of_frames_in_each_state_in_one_template[state] += 1
+        number_of_frames_in_each_state_for_each_template.append(number_of_frames_in_each_state_in_one_template)
+        print number_of_frames_in_each_state_for_each_template
+    trained_model = train_model(input_list, number_of_states, number_of_frames_in_each_state_for_each_template)
+    return trained_model

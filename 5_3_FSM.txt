@@ -1,0 +1,5 @@
+N_States: 2
+Start_State: 0 
+Terminal_States: 1
+Edge 0 1 0-9
+Edge 1 0 N

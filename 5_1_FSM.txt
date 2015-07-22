@@ -1,0 +1,11 @@
+N_States: 8 
+Start_State: 0 
+Terminal_States: 7
+Edge 0 1 2-9 
+Edge 0 3 N
+Edge 1 2 0-9
+Edge 2 3 0-9
+Edge 3 4 0-9
+Edge 4 5 0-9
+Edge 5 6 0-9
+Edge 6 7 0-9
