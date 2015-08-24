@@ -10,3 +10,5 @@
 - [单个单词识别](http://lufo.me/2015/07/21/ASR4.html)
 - [连续语音识别](http://lufo.me/2015/07/21/ASR5.html)
 - [语言模型](http://lufo.me/2015/07/22/ASR6.html)
+- [word to phoneme](http://lufo.me/2015/08/20/ASR7.html)
+- [GMM to DNN](http://lufo.me/2015/08/24/ASR8.html)
